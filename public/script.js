@@ -7,19 +7,105 @@ const saveButton = document.querySelector('#save-button');
 const cancelButton = document.querySelector('#cancel-button');
 const message = document.querySelector('#message');
 
-// Store projects in browser memory.
+const STORAGE_KEY = 'workshop-projects-v1';
+const validStatuses = ['Planned', 'In Progress', 'Completed'];
+
 const projects = [];
 
 let editingId = null;
+let storageBlocked = false;
+let storageProblem = '';
 
-// Display all projects.
+function loadProjects() {
+    try {
+        const storedData = localStorage.getItem(STORAGE_KEY);
+
+        if (storedData === null) {
+            return;
+        }
+
+        const savedProjects = JSON.parse(storedData);
+
+        if (!Array.isArray(savedProjects)) {
+            throw new Error('Stored data is not an array.');
+        }
+
+        const ids = new Set();
+
+        const validData = savedProjects.every(project => {
+            if (
+                project === null ||
+                typeof project !== 'object' ||
+                typeof project.id !== 'string' ||
+                project.id.trim() === '' ||
+                typeof project.name !== 'string' ||
+                project.name.trim() === '' ||
+                !validStatuses.includes(project.status) ||
+                ids.has(project.id)
+            ) {
+                return false;
+            }
+
+            ids.add(project.id);
+            return true;
+        });
+
+        if (!validData) {
+            throw new Error('Stored project records are invalid.');
+        }
+
+        projects.push(...savedProjects);
+    } catch (error) {
+        storageBlocked = true;
+        storageProblem =
+            'Saved project data is invalid or cannot be read. ' +
+            'It has not been overwritten. Check or clear the localStorage ' +
+            'key "workshop-projects-v1" to continue saving.';
+
+        if (message) {
+            message.textContent = storageProblem;
+        }
+    }
+}
+
+function saveProjects() {
+    if (storageBlocked) {
+        if (message) {
+            message.textContent =
+                storageProblem ||
+                'Changes could not be saved because stored data is invalid.';
+        }
+
+        return false;
+    }
+
+    try {
+        const storedData = JSON.stringify(projects);
+        localStorage.setItem(STORAGE_KEY, storedData);
+        return true;
+    } catch (error) {
+        if (message) {
+            message.textContent =
+                'Changes could not be saved. Browser storage may be unavailable or full.';
+        }
+
+        return false;
+    }
+}
+
 function renderProjects() {
     projectList.replaceChildren();
 
     if (emptyState) {
-        emptyState.textContent =
-            'No projects yet. Add your first project above.';
-        emptyState.hidden = projects.length > 0;
+        if (projects.length > 0) {
+            emptyState.hidden = true;
+        } else {
+            emptyState.textContent = storageProblem
+                ? 'Projects could not be loaded from saved browser data.'
+                : 'No projects yet. Add your first project above.';
+
+            emptyState.hidden = false;
+        }
     }
 
     projects.forEach(project => {
@@ -57,7 +143,6 @@ function renderProjects() {
     });
 }
 
-// Start editing a project.
 function startEditing(id) {
     const project = projects.find(item => item.id === id);
 
@@ -73,13 +158,12 @@ function startEditing(id) {
     cancelButton.hidden = false;
 
     if (message) {
-        message.textContent = '';
+        message.textContent = storageProblem;
     }
 
     nameInput.focus();
 }
 
-// Reset the form to Add mode.
 function resetFormToAddMode() {
     editingId = null;
     form.reset();
@@ -88,11 +172,10 @@ function resetFormToAddMode() {
     cancelButton.hidden = true;
 
     if (message) {
-        message.textContent = '';
+        message.textContent = storageProblem;
     }
 }
 
-// Delete a project after confirmation.
 function deleteProject(id) {
     const index = projects.findIndex(item => item.id === id);
 
@@ -113,14 +196,24 @@ function deleteProject(id) {
 
     projects.splice(index, 1);
 
+    if (!saveProjects()) {
+        projects.splice(index, 0, project);
+        renderProjects();
+        return;
+    }
+
     if (editingId === id) {
         resetFormToAddMode();
     }
 
+    storageProblem = '';
     renderProjects();
+
+    if (message) {
+        message.textContent = '';
+    }
 }
 
-// Add a new project or save changes.
 form.addEventListener('submit', event => {
     event.preventDefault();
 
@@ -136,6 +229,14 @@ form.addEventListener('submit', event => {
         return;
     }
 
+    if (!validStatuses.includes(status)) {
+        if (message) {
+            message.textContent = 'Please select a valid project status.';
+        }
+
+        return;
+    }
+
     if (editingId !== null) {
         const project = projects.find(item => item.id === editingId);
 
@@ -145,27 +246,45 @@ form.addEventListener('submit', event => {
             return;
         }
 
+        const oldName = project.name;
+        const oldStatus = project.status;
+
         project.name = name;
         project.status = status;
+
+        if (!saveProjects()) {
+            project.name = oldName;
+            project.status = oldStatus;
+            renderProjects();
+            return;
+        }
     } else {
-        projects.push({
+        const newProject = {
             id: crypto.randomUUID(),
             name: name,
             status: status
-        });
+        };
+
+        projects.push(newProject);
+
+        if (!saveProjects()) {
+            projects.pop();
+            renderProjects();
+            return;
+        }
     }
 
+    storageProblem = '';
     renderProjects();
     resetFormToAddMode();
     nameInput.focus();
 });
 
-// Cancel editing.
 cancelButton.addEventListener('click', () => {
     resetFormToAddMode();
     nameInput.focus();
 });
 
-// Initial setup.
 resetFormToAddMode();
+loadProjects();
 renderProjects();
