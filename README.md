@@ -53,7 +53,7 @@ Checks performed:
 - [x] Recover and save after restarting the server.
 - [x] Cancel editing without saving changes.
 - [x] Cancel deletion without removing the project.
-- [ ] Confirm rapid clicking creates only one project and sends only one POST request.
+- [x] Confirm rapid clicking creates only one project and sends only one POST request.
 - [ ] Run automated tests, if `test/crud.test.js` is present.
 - [ ] Test the webpage on a mobile-sized screen.
 
